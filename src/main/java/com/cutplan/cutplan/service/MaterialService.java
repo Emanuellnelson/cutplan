@@ -204,7 +204,7 @@ public class MaterialService {
         
         double comprimentoRestante = comprimentoBarra;
         int barrasUtilizadas = 1;
-        boolean primeiraPecaNaBarra = true;
+        double posicaoAtual = 0;
         BarraCorteDTO barraAtual = new BarraCorteDTO();
         barraAtual.setNumeroBarra(barrasUtilizadas);
         barraAtual.setPecas(new ArrayList<>());
@@ -215,29 +215,26 @@ public class MaterialService {
             int quantidadeRestante = peca.getQuantidade();
             
             while (quantidadeRestante > 0) {
-                // Calcula o espaço necessário considerando a folga de corte
                 double espacoNecessario = peca.getComprimentoPeca();
-                if (!primeiraPecaNaBarra) {
-                    espacoNecessario += espacoEntreCortes;
-                }
                 
                 if (espacoNecessario <= comprimentoRestante) {
                     // A peça cabe na barra atual
                     PecaCorteDTO pecaCorte = new PecaCorteDTO();
                     pecaCorte.setComprimento(peca.getComprimentoPeca());
-                    pecaCorte.setPosicaoInicial(comprimentoBarra - comprimentoRestante);
+                    pecaCorte.setPosicaoInicial(posicaoAtual);
+                    pecaCorte.setId(peca.getId()); // Adicionando o ID da peça
                     
                     barraAtual.getPecas().add(pecaCorte);
                     comprimentoRestante -= espacoNecessario;
+                    posicaoAtual += espacoNecessario + espacoEntreCortes;
                     quantidadeRestante--;
-                    primeiraPecaNaBarra = false;
                 } else {
                     // Precisa de uma nova barra
                     barraAtual.setComprimentoRestante(comprimentoRestante);
                     
                     barrasUtilizadas++;
                     comprimentoRestante = comprimentoBarra;
-                    primeiraPecaNaBarra = true;
+                    posicaoAtual = 0;
                     
                     barraAtual = new BarraCorteDTO();
                     barraAtual.setNumeroBarra(barrasUtilizadas);
