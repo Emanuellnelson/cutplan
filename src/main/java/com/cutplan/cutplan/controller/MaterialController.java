@@ -4,14 +4,13 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.cutplan.cutplan.dto.BarraDTO;
 import com.cutplan.cutplan.dto.PlanoCorteDTO;
+import com.cutplan.cutplan.dto.PecaDTO;
+import com.cutplan.cutplan.entity.Barra;
 import com.cutplan.cutplan.entity.ResultadoMaterial;
 import com.cutplan.cutplan.service.MaterialService;
 
@@ -52,12 +51,56 @@ public class MaterialController {
         return ResponseEntity.ok(resultados);
     }
 
+    @PostMapping("/barras")
+    public ResponseEntity<Barra> cadastrarBarra(@RequestBody BarraDTO barraDTO) {
+        Barra barra = materialService.cadastrarBarra(barraDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(barra);
+    }
+
+    @GetMapping("/barras")
+    public ResponseEntity<List<Barra>> listarBarras() {
+        List<Barra> barras = materialService.listarBarras();
+        return ResponseEntity.ok(barras);
+    }
+
+    @PostMapping("/pecas")
+    public ResponseEntity<ResultadoMaterial> cadastrarPeca(@RequestBody PecaDTO pecaDTO) {
+        ResultadoMaterial peca = materialService.cadastrarPeca(pecaDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(peca);
+    }
+
     @PostMapping("/otimizar")
-    public ResponseEntity<PlanoCorteDTO> otimizarCorte(
-            @RequestParam("comprimentoBarra") double comprimentoBarra,
-            @RequestParam("espacoEntreCortes") double espacoEntreCortes) {
+    public ResponseEntity<?> otimizarCorte(
+            @RequestParam(required = false) Long barraId,
+            @RequestParam double espacoEntreCortes) {
+        
+        List<Barra> barras = materialService.listarBarras();
+        if (barras.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Erro: Não existem barras cadastradas. Por favor, cadastre pelo menos uma barra primeiro.");
+        }
+
         List<ResultadoMaterial> pecas = materialService.obterResultados();
-        PlanoCorteDTO plano = materialService.otimizarCorte(pecas, comprimentoBarra, espacoEntreCortes);
+        if (pecas.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Erro: Não existem peças cadastradas. Você tem duas opções:\n\n" +
+                         "1. Cadastrar peças manualmente usando o endpoint POST /api/material/pecas com o seguinte formato:\n" +
+                         "   {\n" +
+                         "       \"codigoPeca\": \"string\",\n" +
+                         "       \"descricao\": \"string\",\n" +
+                         "       \"quantidade\": number,\n" +
+                         "       \"comprimento\": number\n" +
+                         "   }\n\n" +
+                         "2. Enviar um arquivo Excel usando o endpoint POST /api/material/upload\n" +
+                         "   O arquivo Excel deve conter as colunas: Código da Peça, Descrição, Quantidade e Comprimento.");
+        }
+
+        if (barraId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Erro: Por favor, selecione uma barra para otimização. Barras disponíveis: " + barras);
+        }
+
+        PlanoCorteDTO plano = materialService.otimizarCorte(pecas, barraId, espacoEntreCortes);
         return ResponseEntity.ok(plano);
     }
 }

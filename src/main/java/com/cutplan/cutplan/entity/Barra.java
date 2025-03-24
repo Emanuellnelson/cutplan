@@ -5,25 +5,18 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "resultado_material")
+@Table(name = "barras")
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class ResultadoMaterial {
-
+public class Barra {
+    
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    private String codigoPeca;
-    private String descricao;
-    private Integer quantidade;
-    private Double comprimentoPeca;
-
     
-}
+    private String descricao;
+    private double comprimento;
+    private double pesoMetro;
+} 

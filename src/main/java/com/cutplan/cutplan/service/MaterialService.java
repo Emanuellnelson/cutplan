@@ -14,13 +14,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.cutplan.cutplan.dto.BarraCorteDTO;
+import com.cutplan.cutplan.dto.BarraDTO;
 import com.cutplan.cutplan.dto.PecaCorteDTO;
 import com.cutplan.cutplan.dto.PlanoCorteDTO;
+import com.cutplan.cutplan.dto.PecaDTO;
+import com.cutplan.cutplan.entity.Barra;
 import com.cutplan.cutplan.entity.ResultadoMaterial;
+import com.cutplan.cutplan.repository.BarraRepository;
 import com.cutplan.cutplan.repository.ResultadoMaterialRepository;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import jakarta.persistence.EntityNotFoundException;
 
 @Service
 @AllArgsConstructor
@@ -28,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 public class MaterialService {
 
     private final ResultadoMaterialRepository resultadoMaterialRepository;
+    private final BarraRepository barraRepository;
     private final DataFormatter dataFormatter = new DataFormatter();
 
     private String getCellValueAsString(Cell cell) {
@@ -193,7 +200,14 @@ public class MaterialService {
         }
     }
 
-    public PlanoCorteDTO otimizarCorte(List<ResultadoMaterial> pecas, double comprimentoBarra, double espacoEntreCortes) {
+    public PlanoCorteDTO otimizarCorte(List<ResultadoMaterial> pecas, Long barraId, double espacoEntreCortes) {
+        Barra barra = barraRepository.findById(barraId)
+            .orElseThrow(() -> new EntityNotFoundException("Barra não encontrada"));
+            
+        return otimizarCorte(pecas, barra.getComprimento(), espacoEntreCortes);
+    }
+
+    private PlanoCorteDTO otimizarCorte(List<ResultadoMaterial> pecas, double comprimentoBarra, double espacoEntreCortes) {
         // Ordena as peças em ordem decrescente de comprimento
         pecas.sort((a, b) -> b.getComprimentoPeca().compareTo(a.getComprimentoPeca()));
         
@@ -201,6 +215,8 @@ public class MaterialService {
         plano.setComprimentoBarra(comprimentoBarra);
         plano.setEspacoEntreCortes(espacoEntreCortes);
         plano.setBarras(new ArrayList<>());
+        
+        List<BarraCorteDTO> barrasComSobra = new ArrayList<>();
         
         double comprimentoRestante = comprimentoBarra;
         int barrasUtilizadas = 1;
@@ -210,42 +226,73 @@ public class MaterialService {
         barraAtual.setPecas(new ArrayList<>());
         plano.getBarras().add(barraAtual);
         
-        // Algoritmo First Fit Decreasing (FFD)
+        // Algoritmo First Fit Decreasing (FFD) modificado
         for (ResultadoMaterial peca : pecas) {
             int quantidadeRestante = peca.getQuantidade();
             
             while (quantidadeRestante > 0) {
                 double espacoNecessario = peca.getComprimentoPeca();
+                boolean pecaAlocada = false;
                 
-                if (espacoNecessario <= comprimentoRestante) {
-                    // A peça cabe na barra atual
-                    PecaCorteDTO pecaCorte = new PecaCorteDTO();
-                    pecaCorte.setComprimento(peca.getComprimentoPeca());
-                    pecaCorte.setPosicaoInicial(posicaoAtual);
-                    pecaCorte.setId(peca.getId()); // Adicionando o ID da peça
-                    
-                    barraAtual.getPecas().add(pecaCorte);
-                    comprimentoRestante -= espacoNecessario;
-                    posicaoAtual += espacoNecessario + espacoEntreCortes;
-                    quantidadeRestante--;
-                } else {
-                    // Precisa de uma nova barra
-                    barraAtual.setComprimentoRestante(comprimentoRestante);
-                    
-                    barrasUtilizadas++;
-                    comprimentoRestante = comprimentoBarra;
-                    posicaoAtual = 0;
-                    
-                    barraAtual = new BarraCorteDTO();
-                    barraAtual.setNumeroBarra(barrasUtilizadas);
-                    barraAtual.setPecas(new ArrayList<>());
-                    plano.getBarras().add(barraAtual);
+                // Primeiro, tenta usar as sobras das barras anteriores
+                for (BarraCorteDTO barraSobra : barrasComSobra) {
+                    if (espacoNecessario <= barraSobra.getComprimentoRestante()) {
+                        PecaCorteDTO pecaCorte = new PecaCorteDTO();
+                        pecaCorte.setComprimento(peca.getComprimentoPeca());
+                        double posicaoInicialSobra = barraSobra.getPecas().isEmpty() ? 0 :
+                            barraSobra.getPecas().get(barraSobra.getPecas().size() - 1).getPosicaoInicial() +
+                            barraSobra.getPecas().get(barraSobra.getPecas().size() - 1).getComprimento() +
+                            espacoEntreCortes;
+                        pecaCorte.setPosicaoInicial(posicaoInicialSobra);
+                        pecaCorte.setId(peca.getId());
+                        
+                        barraSobra.getPecas().add(pecaCorte);
+                        barraSobra.setComprimentoRestante(barraSobra.getComprimentoRestante() - espacoNecessario - espacoEntreCortes);
+                        pecaAlocada = true;
+                        quantidadeRestante--;
+                        break;
+                    }
+                }
+                
+                if (!pecaAlocada) {
+                    // Se não encontrou sobra adequada, tenta usar a barra atual
+                    if (espacoNecessario <= comprimentoRestante) {
+                        PecaCorteDTO pecaCorte = new PecaCorteDTO();
+                        pecaCorte.setComprimento(peca.getComprimentoPeca());
+                        pecaCorte.setPosicaoInicial(posicaoAtual);
+                        pecaCorte.setId(peca.getId());
+                        
+                        barraAtual.getPecas().add(pecaCorte);
+                        comprimentoRestante -= (espacoNecessario + espacoEntreCortes);
+                        posicaoAtual += espacoNecessario + espacoEntreCortes;
+                        quantidadeRestante--;
+                    } else {
+                        // Adiciona a barra atual à lista de barras com sobra se tiver espaço significativo
+                        if (comprimentoRestante > 0) {
+                            barraAtual.setComprimentoRestante(comprimentoRestante);
+                            barrasComSobra.add(barraAtual);
+                        }
+                        
+                        // Cria uma nova barra
+                        barrasUtilizadas++;
+                        comprimentoRestante = comprimentoBarra;
+                        posicaoAtual = 0;
+                        
+                        barraAtual = new BarraCorteDTO();
+                        barraAtual.setNumeroBarra(barrasUtilizadas);
+                        barraAtual.setPecas(new ArrayList<>());
+                        plano.getBarras().add(barraAtual);
+                    }
                 }
             }
         }
         
         // Atualiza os dados finais do plano
         barraAtual.setComprimentoRestante(comprimentoRestante);
+        if (comprimentoRestante > 0) {
+            barrasComSobra.add(barraAtual);
+        }
+        
         plano.setTotalBarras(barrasUtilizadas);
         plano.setSobraUltimaBarra(comprimentoRestante);
         
@@ -254,5 +301,26 @@ public class MaterialService {
 
     public List<ResultadoMaterial> obterResultados() {
         return resultadoMaterialRepository.findAll();
+    }
+
+    public Barra cadastrarBarra(BarraDTO barraDTO) {
+        Barra barra = new Barra();
+        barra.setDescricao(barraDTO.getDescricao());
+        barra.setComprimento(barraDTO.getComprimento());
+        barra.setPesoMetro(barraDTO.getPesoMetro());
+        return barraRepository.save(barra);
+    }
+
+    public List<Barra> listarBarras() {
+        return barraRepository.findAll();
+    }
+
+    public ResultadoMaterial cadastrarPeca(PecaDTO pecaDTO) {
+        ResultadoMaterial peca = new ResultadoMaterial();
+        peca.setCodigoPeca(pecaDTO.getCodigoPeca());
+        peca.setDescricao(pecaDTO.getDescricao());
+        peca.setQuantidade(pecaDTO.getQuantidade());
+        peca.setComprimentoPeca(pecaDTO.getComprimento());
+        return resultadoMaterialRepository.save(peca);
     }
 }
