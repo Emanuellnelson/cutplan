@@ -69,6 +69,12 @@ public class MaterialController {
         return ResponseEntity.status(HttpStatus.CREATED).body(peca);
     }
 
+    @DeleteMapping("/resultados")
+    public ResponseEntity<String> limparResultados() {
+        materialService.limparResultados();
+        return ResponseEntity.ok("Tabela de resultados limpa com sucesso");
+    }
+
     @PostMapping("/otimizar")
     public ResponseEntity<?> otimizarCorte(
             @RequestParam(required = false) Long barraId,

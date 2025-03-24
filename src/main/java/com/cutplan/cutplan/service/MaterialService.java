@@ -323,4 +323,8 @@ public class MaterialService {
         peca.setComprimentoPeca(pecaDTO.getComprimento());
         return resultadoMaterialRepository.save(peca);
     }
+
+    public void limparResultados() {
+        resultadoMaterialRepository.deleteAll();
+    }
 }
